@@ -19,11 +19,19 @@ class Node:
         self.char = char
         self.weight = weight
         
+    def __lt__(self, other):
+        return self.weight < other.weight
+        
+    def set_parent(self, node):
+        self.parent = node
 
 def merge(node1, node2):
     """
     Take two trees and return one that has the two trees past as 
     children, and a weight which is the sum of the weights of the two child trees
     """
+    parent = Node(None, node1, node2, None, node1.weight + node2.weight)
+    node1.set_parent(parent)
+    node2.set_parent(parent)
     
-    return Node(None, node1, node2, None, node1.weight + node2.weight)
+    return parent
