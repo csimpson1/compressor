@@ -1,8 +1,7 @@
 import heapq
-import node
+from compressor import node
 import requests
-from idlelib.idle_test.test_configdialog import root
-from base64 import decodestring
+
 
 class Compressor:
 
@@ -47,18 +46,19 @@ class Compressor:
         forest = []
         for frequency in self.frequencies.items():
             #frequency[0] is the char, frequency[1] is the count
-            node = Node(None, None, None, frequency[0], frequency[1])
-            heappush(forest, node)
+            n= node.Node(None, None, None, frequency[0], frequency[1])
+            heapq.heappush(forest, n)
             
         #Start combining trees
         while len(forest) > 1:
-            candidate1 = heappop(forest)
-            candidate2 = heappop(forest)
-            
-            tree = merge(candidate1, candidate2)
+            candidate1 = heapq.heappop(forest)
+            candidate2 = heapq.heappop(forest)
+            print(f'c1:{candidate1.char} cd2:{candidate2.char}')
+            tree = node.merge(candidate1, candidate2)
+            heapq.heappush(forest, tree)
             
         #Now that we have a minimal tree, return it
-        self.tree = heappop(forrest)
+        self.tree = heapq.heappop(forest)
     
     def parse_huffman_tree(self):
         """
@@ -68,21 +68,21 @@ class Compressor:
         
         root = self.tree
         codeStr = ''
-        dfs(root, codeStr)
+        self.dfs(root, codeStr)
         
         
-    def dfs(self, node, codestr):
+    def dfs(self, node, codeStr):
         if node.char:
-            self.encoding[node.char] = decodestring
+            self.encoding[node.char] = codeStr
             
         else:
             if node.left:
                 codeStr += '0'
-                dfs(node.left, codeStr)
-                
+                self.dfs(node.left, codeStr)
+
             elif node.right:
                 codeStr += '1'
-                dfs(node.right, codeStr)
+                self.dfs(node.right, codeStr)
     
     
     def get_encoding(self):
