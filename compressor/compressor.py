@@ -14,7 +14,7 @@ class Compressor:
         self.file = file
         self.frequencies = {}
         self.tree = None
-        self.encoding = None
+        self.encoding = {}
     
     def get_frequencies_file(self):
         
@@ -53,7 +53,6 @@ class Compressor:
         while len(forest) > 1:
             candidate1 = heapq.heappop(forest)
             candidate2 = heapq.heappop(forest)
-            print(f'c1:{candidate1.char} cd2:{candidate2.char}')
             tree = node.merge(candidate1, candidate2)
             heapq.heappush(forest, tree)
             
@@ -72,17 +71,25 @@ class Compressor:
         
         
     def dfs(self, node, codeStr):
+        oneKid = False
         if node.char:
             self.encoding[node.char] = codeStr
             
-        else:
-            if node.left:
-                codeStr += '0'
-                self.dfs(node.left, codeStr)
+        if node.left:
+            #We have visited on child 
+            oneKid = True
+            codeStr += '0'
+            self.dfs(node.left, codeStr)
 
-            elif node.right:
+        if node.right:
+            if oneKid:
+                #We've already visited one child, so remove the last 0 added and put on a one
+                codeStr = codeStr[:-1] + '1'
+            
+            else:
+                #Otherwise we did not add a 0 already at this depth so proceed
                 codeStr += '1'
-                self.dfs(node.right, codeStr)
+            self.dfs(node.right, codeStr)
     
     
     def get_encoding(self):

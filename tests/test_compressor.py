@@ -65,6 +65,14 @@ class TestCompressorMethods(unittest.TestCase):
         self.assertEqual(aNode.parent.parent, dNode.parent.parent)
         
         
+    def test_parse_huffman_tree(self):
+        
+        self.comp.get_frequencies_file()
+        self.comp.create_huffman_tree()
+        self.comp.parse_huffman_tree()
+        
+        for node in self.comp.encoding:
+            print(f'{node}, {self.comp.encoding[node]} ')
             
         
         
