@@ -71,8 +71,11 @@ class TestCompressorMethods(unittest.TestCase):
         self.comp.create_huffman_tree()
         self.comp.parse_huffman_tree()
         
-        for node in self.comp.encoding:
-            print(f'{node}, {self.comp.encoding[node]} ')
+        self.assertEqual(self.comp.encoding['a'], '10')
+        self.assertEqual(self.comp.encoding['b'], '011')
+        self.assertEqual(self.comp.encoding['c'], '11')
+        self.assertEqual(self.comp.encoding['d'], '00')
+        self.assertEqual(self.comp.encoding['e'], '010')
             
         
         
