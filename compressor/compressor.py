@@ -1,8 +1,10 @@
 import heapq
 import itertools
 #from compressor import node
+from math import ceil
 import node
 import requests
+
 
 
 class Compressor:
@@ -19,7 +21,10 @@ class Compressor:
         self.encoding = {}
         self.decoding = {}
         self.eof = eof
-        self.canonical=True
+        self.sortedEncoding = []
+        self.minCw = {}
+        self.cwToSymbol = {}
+
         
     
     def get_frequencies_file(self):
@@ -28,7 +33,7 @@ class Compressor:
         Scan through a file and count the occurences of each character.
         """
         
-        with open(self.file, 'r', encoding='utf-8') as f:
+        with open(self.file, 'r', encoding='utf-8-sig') as f:
             for line in f:
                 for char in line:
                     #char = char.encode('utf-8')
@@ -75,11 +80,14 @@ class Compressor:
         root = self.tree
         codeStr = ''
         self.dfs(root, codeStr)
-        
+        self.create_canonical()
         self.create_decoding()
         
         
     def dfs(self, node, codeStr):
+        """
+        Perform a depth first traversal of the huffman tree and construct the codes for each of the leaves based on the path taken
+        """
         oneKid = False
         if node.char:
             self.encoding[node.char] = codeStr
@@ -99,27 +107,113 @@ class Compressor:
                 #Otherwise we did not add a 0 already at this depth so proceed
                 codeStr += '1'
             self.dfs(node.right, codeStr)
-    
+            
     def create_decoding(self):
         """
-        Construct a dictionary which can be used to decode a file given a known encoding.
-        Function inverts the encoding dict of this object : keys are values, and values are keys
-        from self.encoding.
+        Construct two lists which can be used to decode a canonical huffman encoding.
+        The first list contains at index i the smallest numerical value of a codeword of length i
+        The second list contains all the codewords of length i, sorted by their numerical value, smallest first 
         """
-        keys = self.encoding.keys()
         
-        for key in keys:
-            self.decoding[self.encoding[key]] = key
+        
+        #encodingIter = iter(self.sortedEncoding)
+        
+        for i in range(len(self.sortedEncoding)):
+            char = self.sortedEncoding[i][0]
+            code = self.sortedEncoding[i][1]
+            codeLen = len(code)
+            
+            if codeLen in self.cwToSymbol:
+                self.cwToSymbol[codeLen].append(char)
+                
+            else:
+                #Because we are using a sorted list of encodings, the first code of 
+                #any length is the minimum
+                
+                self.minCw[codeLen] = int(code, 2)
+                self. cwToSymbol[codeLen] = [char]
+        
+
+    def create_canonical(self):
+        """Convert the current encoding to a canonical one"""
+        #First, convert the encoding to a list of tuples, and sort by code length
+        
+        encoding = [(k, v) for k, v in self.encoding.items()]
+        encoding.sort(key=lambda x: (len(x[1]), x[1]))
+        
+        
+        canonicalEncoding = {}
+        sortedCEnc = []
+        wordLengthCounts={}
+        minCw = {}
+        
+        #Count the number of codewords of a given length
+        maxCodeLength = len(encoding[-1][1])
+        for i in range(1, maxCodeLength + 1):
+            wordLengthCounts[i] = 0
+            
+        for item in encoding:
+            length = len(item[1])
+            wordLengthCounts[length] += 1
+    
+        #For each length, calculate the minimum codeword of that length
+        
+        self.minCw[maxCodeLength] = 0
+        
+        for i in range(maxCodeLength-1, 0, -1):
+            self.minCw[i] = ceil((self.minCw[i+1] + wordLengthCounts[i+1])/2)
+        
+        
+        #Now calculate the canonical huffman codes, and store them into the newEncoding dict
+        #At the same time, add the characters into the cwToSymbol dict, grouping them together by their length, and 
+        #the order they appear in the sorted list. This is crucial. Ordering the characters is what makes decoding
+        #the canonical codes easy.
+        
+        #Initialize
+        character = encoding[0][0]
+        currentLength = len(encoding[0][1])
+        currentCode = self.format_code(self.minCw[currentLength], currentLength)
+        lengthNCodes = [character]
+        canonicalEncoding[character] = currentCode
+
+        
+        #Calculate the new codes based on the first code created above
+        for (character, code) in encoding[1:]:
+            newLength = len(code)
+            
+            #Canonical Huffman codes for codewords of the same length are consecutive
+            if currentLength == newLength:
+
+                newCode = self.format_code(int(currentCode,2) + 1, currentLength)
+                
+                canonicalEncoding[character] = newCode    
+                lengthNCodes.append(character)
+                
+                currentCode = newCode
+                
+            #We've found the first code of a new length    
+            else:
+                #The list comprehension below is copying lengthNCodes, so we can make changes to lengthNCodes without impacting
+                #earlier values inserted into cwToSymbol
+                self.cwToSymbol[currentLength] = [item for item in lengthNCodes]
+                currentLength = newLength
+                
+                currentCode = self.format_code(self.minCw[currentLength], currentLength)
+                canonicalEncoding[character] = currentCode
+                lengthNCodes = [character]
+        
+        self.cwToSymbol[currentLength] = [item for item in lengthNCodes]
+        self.encoding = canonicalEncoding
+        self.sortedEncoding = sortedCEnc
     
     def encode(self):
         """
         Create an encoded file using an encoding previously generated by this object
         """
         
-        #First, read the input file and transform it according to the encoding
         
         bytes = []
-        with open(self.file, 'r', encoding='utf-8') as r:
+        with open(self.file, 'r', encoding='utf-8-sig') as r:
             
             #Can this be done with a transform?
             bits = ''
@@ -143,94 +237,110 @@ class Compressor:
                 bytes.append(byte)
             else:
                 break
-                
+               
         # Finished encoding the file, now write it
         with open ('encoded.bin', 'wb') as f:
             f.write(bytearray(bytes)) 
       
-    def format_byte(self, byte):
+    def format_code(self, byte, length):
         """
         Format a byte from the compressed stream for decoding
         """               
         #Convert the binary into an integer
-        byte = int.from_bytes(byte, 'little')
+        #byte = int.from_bytes(byte, 'little')
         
         #Next convert that integer to a string
         byte = '{0:b}'.format(byte)
         
         #This conversion strips leading 0's, however we need them
         #If we have less than 8 bytes, pad the start with 0's
+        
         """
         modulo = len(byte) % 8
-        print(modulo)
+        
         if modulo != 0:
             byte = '0' * (8-modulo) + byte
-        """ 
+        """
+        
+        if len(byte) != length:
+            byte = ('0' * (length - len(byte))) + byte
+            
         return byte
     
-    def get_decoded(self, byte, startPos=0):
-        for i in range(len(byte)):
-            candidate = byte[startPos:i]
-            print(candidate)
-                
-            if candidate in self.decoding:
-                return self.encoding[candidate]
-        
-        return None
+    
+
         
     def decode(self, fName = 'encoded.bin'):
         """
         Decode a file according to the encoding contained in this compressor object
         """
-        toWrite = []
+
         with open(fName, 'rb') as f:
             
-            
             byte = f.read(1)
-            while byte:
+            byteFormatted = self.format_code(int.from_bytes(byte, 'little'), 8)
+            
+            idx = 0
+            candidate = byteFormatted[idx]
+            
+            
+            #while self.decoding.get(candidate, None) != self.eof:
+            while True:
                 
-                byteFormatted = self.format_byte(byte)
-                #Decode the byte:
-                decoded = self.get_decoded(byteFormatted)
-                #We found a decoding, and by the no prefix property we know it is correct
-                if decoded:
-                        toWrite.append(self.decoding[byteFormatted])
+                while int(candidate, 2) < self.minCw.get(len(candidate)):
                     
-                else:
-                    #Our code is larger than what was contained in 8 bytes. Try for something that 
-                    #could be contained in 16
+                    #We still have bits that can be tried
+                    if idx < len(byteFormatted) - 1:
+                        idx += 1
+                        
                     
-                    #IF our code is between 8 and 16 bits, we need to add back 0's to the beginning
-                    modulo = len(byteFormatted) % 8
-                    if modulo != 0:
-                        byteFormatted = '0' * (8-modulo) + byteFormatted
-                    #Get the next byte and see if it is the key    
-                    byteFormatted = self.format_byte(f.read(1)) + byteFormatted
-                    if byteFormatted in self.decoding:
-                        toWrite.append(self.decoding[byteFormatted])
+                    #Need to read another byte from the file    
                     else:
-                        #TODO: Handle this case better
-                        print('Error, encoding of some char was larger than 16 bits')
-                        return
+                        byte = f.read(1)
+                        byteFormatted = self.format_code(int.from_bytes(byte, 'little'), 8)
+                        idx = 0
+                        
+                    candidate += byteFormatted[idx]
+                        
                     
-                if byteFormatted != self.encode(self.eof):
-                    byte = f.read(1)
-                else:
-                    break
+                #We have found a codeword. The difference between this codeword and the minimum codeword of the same length 
+                #will be the index in cwToSymbol
                 
+                length = len(candidate)
+                index = int(candidate, 2) - self.minCw[length]
+                
+                char = self.cwToSymbol[length][index]
+                
+                #DEBUGGING
+                if char == 'e':
+                    pass
+                
+                with open('decoded.txt', 'a', encoding='utf-8-sig') as d:
+                    d.write(char)
+                
+                #Stop if we've written the end of the file
+                if char == self.eof:
+                    return
+                    
+                #Now that we've written a char, cleanup
+                
+                if idx < len(byteFormatted) - 1:
+                    idx += 1
+                
+                else:
+                    byte = f.read(1)
+                    byteFormatted = self.format_code(int.from_bytes(byte, 'little'), 8)
+                    idx = 0
+                    
+                candidate = byteFormatted[idx]
     
     
 if __name__ == '__main__':
     
-    c = Compressor('../tests/warandpeace.txt',)
+    c = Compressor('../tests/w&psample.txt', eof='$')
     c.get_frequencies_file()
     c.create_huffman_tree()
     c.parse_huffman_tree()
     c.encode()
-    a = c.get_alphabet()
-    print(len(a))
-    #a = [char.decode('utf-8') for char in a]
-    for char in a:
-        #print(char.decode('utf-8'))
-        print(u'\ufeff')
-    #c.decode()
+    c.decode()
+    
